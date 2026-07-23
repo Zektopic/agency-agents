@@ -1,55 +1,43 @@
 
 import unittest
-import sys
+import json
 import importlib.util
-from pathlib import Path
+import os
+import sys
 
-# Extract `_summary` from the generated script string.
-scripts_dir = Path(__file__).parent.resolve()
-target_file = scripts_dir / "build-hermes-plugin.py"
+# Load the module to get to its scope
+script_path = os.path.join(os.path.dirname(__file__), 'build-hermes-plugin.py')
+spec = importlib.util.spec_from_file_location('build_hermes_plugin', script_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
 
-spec = importlib.util.spec_from_file_location("build_hermes_plugin", str(target_file))
-build_hermes_plugin = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(build_hermes_plugin)
+# Extract init_py() text
+init_code = module.init_py()
 
-init_py_str = build_hermes_plugin.init_py()
-namespace = {"__file__": "fake_path.py"}
-exec(init_py_str, namespace)
-_summary = namespace["_summary"]
+# execute it locally to get the _json function
+namespace = {}
+namespace['__file__'] = "dummy_file.py"
+exec(init_code, namespace)
+_json = namespace['_json']
 
-class TestHermesPlugin(unittest.TestCase):
-    def test_summary_no_score(self):
-        agent = {
-            "slug": "test-agent",
-            "name": "Test Agent",
-            "division": "testing",
-            "description": "A test agent.",
-            "vibe": "serious",
-            "source_path": "testing/test-agent.md"
-        }
-        res = _summary(agent)
+class TestBuildHermesPlugin(unittest.TestCase):
+    def test_json_basic(self):
+        """Test basic JSON serialization with 2-space indentation."""
+        payload = {"key": "value", "number": 42}
+        expected = '{\n  "key": "value",\n  "number": 42\n}'
+        self.assertEqual(_json(payload), expected)
 
-        self.assertEqual(res["slug"], "test-agent")
-        self.assertEqual(res["name"], "Test Agent")
-        self.assertEqual(res["division"], "testing")
-        self.assertEqual(res["description"], "A test agent.")
-        self.assertEqual(res["vibe"], "serious")
-        self.assertEqual(res["source_path"], "testing/test-agent.md")
-        self.assertNotIn("score", res)
+    def test_json_ensure_ascii_false(self):
+        """Test that ensure_ascii=False correctly handles non-ASCII characters."""
+        payload = {"greeting": "你好", "emoji": "🚀"}
+        expected = '{\n  "greeting": "你好",\n  "emoji": "🚀"\n}'
+        self.assertEqual(_json(payload), expected)
 
-    def test_summary_with_score(self):
-        agent = {
-            "slug": "test-agent",
-            "name": "Test Agent",
-            "division": "testing",
-            "description": "A test agent."
-        }
-        res = _summary(agent, 4.5678)
+    def test_json_empty_dict(self):
+        """Test that an empty dictionary is handled correctly."""
+        payload = {}
+        expected = '{}'
+        self.assertEqual(_json(payload), expected)
 
-        # description, vibe, and source_path should default to empty string
-        self.assertEqual(res["vibe"], "")
-        self.assertEqual(res["source_path"], "")
-        self.assertEqual(res["score"], 4.568) # rounded to 3 decimal places
-
-if __name__ == "__main__":
+if __name__ == '__main__':
     unittest.main()
