@@ -1,0 +1,42 @@
+import unittest
+import json
+import importlib.util
+import os
+import sys
+
+# Load the module to get to its scope
+script_path = os.path.join(os.path.dirname(__file__), 'build-hermes-plugin.py')
+spec = importlib.util.spec_from_file_location('build_hermes_plugin', script_path)
+module = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(module)
+
+# Extract init_py() text
+init_code = module.init_py()
+
+# execute it locally to get the _json function
+namespace = {}
+namespace['__file__'] = "dummy_file.py"
+exec(init_code, namespace)
+_json = namespace['_json']
+
+class TestBuildHermesPlugin(unittest.TestCase):
+    def test_json_basic(self):
+        """Test basic JSON serialization with 2-space indentation."""
+        payload = {"key": "value", "number": 42}
+        expected = '{\n  "key": "value",\n  "number": 42\n}'
+        self.assertEqual(_json(payload), expected)
+
+    def test_json_ensure_ascii_false(self):
+        """Test that ensure_ascii=False correctly handles non-ASCII characters."""
+        payload = {"greeting": "你好", "emoji": "🚀"}
+        expected = '{\n  "greeting": "你好",\n  "emoji": "🚀"\n}'
+        self.assertEqual(_json(payload), expected)
+
+    def test_json_empty_dict(self):
+        """Test that an empty dictionary is handled correctly."""
+        payload = {}
+        expected = '{}'
+        self.assertEqual(_json(payload), expected)
+
+if __name__ == '__main__':
+    unittest.main()
