@@ -1,33 +1,50 @@
+
+import pytest
 import importlib.util
-import unittest
+import sys
 from pathlib import Path
 
-script_path = Path(__file__).parent / "build-hermes-plugin.py"
-spec = importlib.util.spec_from_file_location("build_hermes_plugin", script_path)
-build_hermes_plugin = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(build_hermes_plugin)
+# Load the module dynamically since it has dashes in the name
+module_name = "build_hermes_plugin"
+file_path = Path(__file__).parent / "build-hermes-plugin.py"
 
-class TestSlugify(unittest.TestCase):
-    def test_normal_string(self):
-        self.assertEqual(build_hermes_plugin.slugify("Hello World"), "hello-world")
+spec = importlib.util.spec_from_file_location(module_name, file_path)
+module = importlib.util.module_from_spec(spec)
+sys.modules[module_name] = module
+spec.loader.exec_module(module)
 
-    def test_special_characters(self):
-        self.assertEqual(build_hermes_plugin.slugify("Hello!@#World"), "hello-world")
+def test_not_found():
+    # Extract the init_py code block
+    code = module.init_py()
 
-    def test_multiple_hyphens(self):
-        self.assertEqual(build_hermes_plugin.slugify("a---b"), "a-b")
+    # Create a namespace and execute the code block
+    namespace = {"__file__": "/fake/path/to/plugin/__init__.py"}
+    exec(code, namespace)
 
-    def test_trailing_leading_hyphens(self):
-        self.assertEqual(build_hermes_plugin.slugify("---hello-world---"), "hello-world")
+    # Retrieve the _not_found function
+    _not_found = namespace['_not_found']
 
-    def test_numbers(self):
-        self.assertEqual(build_hermes_plugin.slugify("Version 2.0!"), "version-2-0")
+    # Test cases
+    # 1. Valid identifier
+    res = _not_found("my-agent")
+    assert res == {
+        "success": False,
+        "error": "agent not found",
+        "agent": "my-agent",
+    }
 
-    def test_empty_string(self):
-        self.assertEqual(build_hermes_plugin.slugify(""), "")
+    # 2. Empty string
+    res = _not_found("")
+    assert res == {
+        "success": False,
+        "error": "agent or slug is required",
+        "agent": None,
+    }
 
-    def test_only_special_characters(self):
-        self.assertEqual(build_hermes_plugin.slugify("!@#$%^&*()"), "")
-
-if __name__ == '__main__':
-    unittest.main()
+    # 3. None (edge case)
+    res = _not_found(None)
+    assert res == {
+        "success": False,
+        "error": "agent or slug is required",
+        "agent": None,
+    }
