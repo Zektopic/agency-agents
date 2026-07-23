@@ -72,12 +72,12 @@ contract VulnerableVault {
         uint256 amount = balances[msg.sender];
         require(amount > 0, "No balance");
 
-        // BUG: External call BEFORE state update
+        // EFFECTS: State update BEFORE external call (Fix)
+        balances[msg.sender] = 0;
+
+        // INTERACTIONS: External call
         (bool success,) = msg.sender.call{value: amount}("");
         require(success, "Transfer failed");
-
-        // Attacker re-enters withdraw() before this line executes
-        balances[msg.sender] = 0;
     }
 }
 
