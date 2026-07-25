@@ -122,27 +122,6 @@ contract SecureVault is ReentrancyGuard {
 
 ### Oracle Manipulation Detection
 ```solidity
-// VULNERABLE: Spot price oracle — manipulable via flash loan
-contract VulnerableLending {
-    IUniswapV2Pair immutable pair;
-
-    function getCollateralValue(uint256 amount) public view returns (uint256) {
-        // BUG: Using spot reserves — attacker manipulates with flash swap
-        (uint112 reserve0, uint112 reserve1,) = pair.getReserves();
-        uint256 price = (uint256(reserve1) * 1e18) / reserve0;
-        return (amount * price) / 1e18;
-    }
-
-    function borrow(uint256 collateralAmount, uint256 borrowAmount) external {
-        // Attacker: 1) Flash swap to skew reserves
-        //           2) Borrow against inflated collateral value
-        //           3) Repay flash swap — profit
-        uint256 collateralValue = getCollateralValue(collateralAmount);
-        require(collateralValue >= borrowAmount * 15 / 10, "Undercollateralized");
-        // ... execute borrow
-    }
-}
-
 // FIXED: Use time-weighted average price (TWAP) or Chainlink oracle
 import {AggregatorV3Interface} from "@chainlink/contracts/src/v0.8/interfaces/AggregatorV3Interface.sol";
 
@@ -164,7 +143,14 @@ contract SecureLending {
         require(updatedAt > block.timestamp - MAX_ORACLE_STALENESS, "Stale price");
         require(answeredInRound >= roundId, "Incomplete round");
 
-        return (amount * uint256(price)) / priceFeed.decimals();
+        return (amount * uint256(price)) / (10 ** priceFeed.decimals());
+    }
+
+    function borrow(uint256 collateralAmount, uint256 borrowAmount) external {
+        // SECURE: Uses Chainlink oracle to prevent flash loan manipulation
+        uint256 collateralValue = getCollateralValue(collateralAmount);
+        require(collateralValue >= borrowAmount * 15 / 10, "Undercollateralized");
+        // ... execute borrow
     }
 }
 ```
