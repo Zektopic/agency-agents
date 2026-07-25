@@ -118,14 +118,18 @@ from typing import Any
 
 _DATA_PATH = Path(__file__).parent / "data" / "agents.json"
 _AGENTS: list[dict[str, Any]] | None = None
+_AGENTS_BY_SLUG: dict[str, dict[str, Any]] | None = None
+_AGENTS_BY_NAME: dict[str, dict[str, Any]] | None = None
 
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9+.#_-]*", re.I)
 
 
 def _load_agents() -> list[dict[str, Any]]:
-    global _AGENTS
+    global _AGENTS, _AGENTS_BY_SLUG, _AGENTS_BY_NAME
     if _AGENTS is None:
         _AGENTS = json.loads(_DATA_PATH.read_text(encoding="utf-8"))
+        _AGENTS_BY_SLUG = {a["slug"]: a for a in _AGENTS}
+        _AGENTS_BY_NAME = {a["name"].lower(): a for a in _AGENTS}
     return _AGENTS
 
 
@@ -137,10 +141,16 @@ def _agent_lookup(identifier: str) -> dict[str, Any] | None:
     needle = (identifier or "").strip().lower()
     if not needle:
         return None
+
+    _load_agents()
+
+    if _AGENTS_BY_NAME is not None and needle in _AGENTS_BY_NAME:
+        return _AGENTS_BY_NAME[needle]
+
     slug = re.sub(r"[^a-z0-9]+", "-", needle).strip("-")
-    for agent in _load_agents():
-        if agent["slug"] == slug or agent["name"].lower() == needle:
-            return agent
+    if _AGENTS_BY_SLUG is not None and slug in _AGENTS_BY_SLUG:
+        return _AGENTS_BY_SLUG[slug]
+
     return None
 
 
