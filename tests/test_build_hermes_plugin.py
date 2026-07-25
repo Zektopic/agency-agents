@@ -33,7 +33,12 @@ class TestAgentLookup(unittest.TestCase):
             {"slug": "another-agent", "name": "Another Agent"},
             {"slug": "weird-chars", "name": "Weird@Chars!"}
         ]
-        self.namespace["_load_agents"] = lambda: self.mock_agents
+        def mock_load():
+            self.namespace["_AGENTS"] = self.mock_agents
+            self.namespace["_AGENTS_BY_SLUG"] = {a["slug"]: a for a in self.mock_agents}
+            self.namespace["_AGENTS_BY_NAME"] = {a["name"].lower(): a for a in self.mock_agents}
+            return self.mock_agents
+        self.namespace["_load_agents"] = mock_load
 
     def test_agent_lookup_empty(self):
         self.assertIsNone(self.agent_lookup(""))
