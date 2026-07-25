@@ -79,5 +79,32 @@ class TestBuildHermesPlugin(unittest.TestCase):
             namespace['_AGENTS_BY_SLUG'] = None
             namespace['_AGENTS_BY_NAME'] = None
 
+    def test_search_limit_parsing_fallback(self):
+        """Test that an invalid limit argument falls back to 8."""
+        class DummyCtx:
+            def __init__(self):
+                self.handlers = {}
+            def register_tool(self, name, *args, **kwargs):
+                self.handlers[name] = kwargs.get('handler') or (args[2] if len(args) > 2 else None)
+
+        original_load_agents = namespace.get('_load_agents')
+        namespace['_load_agents'] = lambda: [{"name": f"Agent {i}", "slug": f"agent-{i}", "division": "tech", "description": "test agent", "prompt": "test"} for i in range(10)]
+        try:
+            ctx = DummyCtx()
+            namespace['register'](ctx)
+            search_handler = ctx.handlers['agency_agents_search']
+
+            res_str = search_handler({"query": "test", "limit": "invalid"})
+            res_json = json.loads(res_str)
+
+            self.assertTrue(res_json["success"])
+            self.assertEqual(res_json["count"], 10)
+            self.assertEqual(len(res_json["results"]), 8)
+        finally:
+            if original_load_agents is not None:
+                namespace['_load_agents'] = original_load_agents
+            else:
+                del namespace['_load_agents']
+
 if __name__ == '__main__':
     unittest.main()
