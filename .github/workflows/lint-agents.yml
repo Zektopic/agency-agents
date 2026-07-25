@@ -32,8 +32,10 @@ jobs:
 
       - name: Get changed agent files
         id: changed
+        env:
+          BASE_REF: ${{ github.base_ref }}
         run: |
-          FILES=$(git diff --name-only --diff-filter=ACMR origin/${{ github.base_ref }}...HEAD -- \
+          FILES=$(git diff --name-only --diff-filter=ACMR origin/"$BASE_REF"...HEAD -- \
             'academic/**/*.md' 'design/**/*.md' 'engineering/**/*.md' 'finance/**/*.md' 'game-development/**/*.md' 'gis/**/*.md' 'healthcare/**/*.md' 'marketing/**/*.md' 'paid-media/**/*.md' 'sales/**/*.md' 'security/**/*.md' 'product/**/*.md' \
             'project-management/**/*.md' 'testing/**/*.md' 'support/**/*.md' \
             'spatial-computing/**/*.md' 'specialized/**/*.md')
