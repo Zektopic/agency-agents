@@ -60,10 +60,11 @@ class TestBuildHermesPlugin(unittest.TestCase):
         register(ctx)
         delegate_handler = ctx.tools['agency_agents_delegate']
 
-        # We need an agent to be successfully found
-        # so we inject a dummy agent into the internal _AGENTS list
         old_agents = namespace.get('_AGENTS', None)
-        namespace['_AGENTS'] = [{"slug": "test-agent", "name": "Test Agent", "division": "Test", "body": "test body"}]
+        mock_list = [{"slug": "test-agent", "name": "Test Agent", "division": "Test", "body": "test body"}]
+        namespace['_AGENTS'] = mock_list
+        namespace['_AGENTS_BY_SLUG'] = {a["slug"]: a for a in mock_list}
+        namespace['_AGENTS_BY_NAME'] = {a["name"].lower(): a for a in mock_list}
 
         try:
             args = {"agent": "test-agent", "task": "do something"}
@@ -75,6 +76,8 @@ class TestBuildHermesPlugin(unittest.TestCase):
             self.assertEqual(result.get('warning'), "delegate_task unavailable: Mock error")
         finally:
             namespace['_AGENTS'] = old_agents
+            namespace['_AGENTS_BY_SLUG'] = None
+            namespace['_AGENTS_BY_NAME'] = None
 
 if __name__ == '__main__':
     unittest.main()
