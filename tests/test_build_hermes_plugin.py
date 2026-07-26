@@ -234,5 +234,96 @@ class TestBuildFunction(unittest.TestCase):
         self.assertFalse(dummy_file.exists())
         self.assertTrue((plugin_dir / "plugin.yaml").exists())
 
+class TestInitPyHelpers(unittest.TestCase):
+    def setUp(self):
+        init_code = init_py()
+        self.namespace = {'__file__': 'dummy_file.py'}
+        exec(init_code, self.namespace)
+        self._json = self.namespace['_json']
+
+    def test_json_basic(self):
+        """Test basic JSON serialization with 2-space indentation."""
+        payload = {"key": "value", "number": 42}
+        expected = '{\n  "key": "value",\n  "number": 42\n}'
+        self.assertEqual(self._json(payload), expected)
+
+    def test_json_ensure_ascii_false(self):
+        """Test that ensure_ascii=False correctly handles non-ASCII characters."""
+        payload = {"greeting": "你好", "emoji": "🚀"}
+        expected = '{\n  "greeting": "你好",\n  "emoji": "🚀"\n}'
+        self.assertEqual(self._json(payload), expected)
+
+    def test_json_empty_dict(self):
+        """Test that an empty dictionary is handled correctly."""
+        payload = {}
+        expected = '{}'
+        self.assertEqual(self._json(payload), expected)
+
+    def test_delegate_exception(self):
+        """Test that delegate_task falling back to returning warning gracefully."""
+        class MockContext:
+            def __init__(self, should_raise=False):
+                self.tools = {}
+                self.should_raise = should_raise
+
+            def register_tool(self, name, toolset, schema, handler, description):
+                self.tools[name] = handler
+
+            def dispatch_tool(self, name, args):
+                if self.should_raise and name == "delegate_task":
+                    raise Exception("Mock error")
+                return "mock result"
+
+        ctx = MockContext(should_raise=True)
+        register = self.namespace['register']
+        register(ctx)
+        delegate_handler = ctx.tools['agency_agents_delegate']
+
+        old_agents = self.namespace.get('_AGENTS', None)
+        mock_list = [{"slug": "test-agent", "name": "Test Agent", "division": "Test", "body": "test body"}]
+        self.namespace['_AGENTS'] = mock_list
+        self.namespace['_AGENTS_BY_SLUG'] = {a["slug"]: a for a in mock_list}
+        self.namespace['_AGENTS_BY_NAME'] = {a["name"].lower(): a for a in mock_list}
+
+        try:
+            args = {"agent": "test-agent", "task": "do something"}
+            result_json = delegate_handler(args)
+            result = json.loads(result_json)
+
+            self.assertTrue(result.get('success'))
+            self.assertFalse(result.get('delegated'))
+            self.assertEqual(result.get('warning'), "delegate_task unavailable: Mock error")
+        finally:
+            self.namespace['_AGENTS'] = old_agents
+            self.namespace['_AGENTS_BY_SLUG'] = None
+            self.namespace['_AGENTS_BY_NAME'] = None
+
+    def test_search_limit_parsing_fallback(self):
+        """Test that an invalid limit argument falls back to 8."""
+        class DummyCtx:
+            def __init__(self):
+                self.handlers = {}
+            def register_tool(self, name, *args, **kwargs):
+                self.handlers[name] = kwargs.get('handler') or (args[2] if len(args) > 2 else None)
+
+        original_load_agents = self.namespace.get('_load_agents')
+        self.namespace['_load_agents'] = lambda: [{"name": f"Agent {i}", "slug": f"agent-{i}", "division": "tech", "description": "test agent", "prompt": "test"} for i in range(10)]
+        try:
+            ctx = DummyCtx()
+            self.namespace['register'](ctx)
+            search_handler = ctx.handlers['agency_agents_search']
+
+            res_str = search_handler({"query": "test", "limit": "invalid"})
+            res_json = json.loads(res_str)
+
+            self.assertTrue(res_json["success"])
+            self.assertEqual(res_json["count"], 10)
+            self.assertEqual(len(res_json["results"]), 8)
+        finally:
+            if original_load_agents is not None:
+                self.namespace['_load_agents'] = original_load_agents
+            else:
+                del self.namespace['_load_agents']
+
 if __name__ == "__main__":
     unittest.main()
