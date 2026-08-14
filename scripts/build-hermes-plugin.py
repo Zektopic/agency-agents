@@ -73,7 +73,7 @@ def collect_agents(repo_root: Path) -> list[dict[str, str]]:
         base = repo_root / dirname
         if not base.is_dir():
             continue
-        for path in sorted(base.rglob("*.md")):
+        for path in base.rglob("*.md"):
             parsed = parse_agent(path, repo_root)
             if parsed:
                 agents.append(parsed)
