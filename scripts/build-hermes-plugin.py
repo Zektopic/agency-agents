@@ -128,6 +128,8 @@ def _load_agents() -> list[dict[str, Any]]:
     global _AGENTS, _AGENTS_BY_SLUG, _AGENTS_BY_NAME
     if _AGENTS is None:
         _AGENTS = json.loads(_DATA_PATH.read_text(encoding="utf-8"))
+        for a in _AGENTS:
+            a["_division_lower"] = a.get("division", "").lower()
         _AGENTS_BY_SLUG = {a["slug"]: a for a in _AGENTS}
         _AGENTS_BY_NAME = {a["name"].lower(): a for a in _AGENTS}
     return _AGENTS
@@ -324,7 +326,7 @@ def register(ctx):
         q_text = query.lower()
         matches: list[tuple[float, dict[str, Any]]] = []
         for agent in _load_agents():
-            if division and agent.get("division", "").lower() != division:
+            if division and agent.get("_division_lower", "") != division:
                 continue
             score = _score(agent, q_tokens, q_text)
             if score > 0:
