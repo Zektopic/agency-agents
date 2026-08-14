@@ -311,7 +311,6 @@ DELEGATE_SCHEMA = {
 
 def register(ctx):
     def search(args: dict[str, Any], **kwargs) -> str:
-        del kwargs
         query = str(args.get("query", "")).strip()
         if not query:
             return _json({"success": False, "error": "query is required"})
@@ -338,7 +337,6 @@ def register(ctx):
         })
 
     def read(args: dict[str, Any], **kwargs) -> str:
-        del kwargs
         identifier = _identifier(args)
         agent = _agent_lookup(identifier)
         if not agent:
@@ -349,7 +347,6 @@ def register(ctx):
         return _json(payload)
 
     def prompt(args: dict[str, Any], **kwargs) -> str:
-        del kwargs
         identifier = _identifier(args)
         agent = _agent_lookup(identifier)
         if not agent:
@@ -361,7 +358,6 @@ def register(ctx):
         })
 
     def delegate(args: dict[str, Any], **kwargs) -> str:
-        del kwargs
         identifier = _identifier(args)
         agent = _agent_lookup(identifier)
         task = str(args.get("task", "")).strip()
