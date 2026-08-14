@@ -150,6 +150,7 @@ def generate_fix_logic(sample_rows: list[str], column_name: str) -> dict:
 ### Step 4 — Cluster-Wide Vectorized Execution
 ```python
 import pandas as pd
+from restricted_execution import execute_sandboxed
 
 def apply_fix_to_cluster(df: pd.DataFrame, column: str, fix: dict) -> pd.DataFrame:
     """Apply AI-generated lambda across entire cluster — vectorized, not looped."""
@@ -159,7 +160,8 @@ def apply_fix_to_cluster(df: pd.DataFrame, column: str, fix: dict) -> pd.DataFra
         df['quarantine_reason'] = f"Low confidence: {fix['confidence_score']}"
         return df
 
-    transform_fn = eval(fix['transformation'])  # safe — evaluated only after strict validation gate (lambda-only, no imports/exec/os)
+    # safe — evaluated in an isolated sandbox, never use raw eval()
+    transform_fn = execute_sandboxed(fix['transformation'])
     df[column] = df[column].map(transform_fn)
     df['validation_status'] = 'AI_FIXED'
     df['ai_reasoning'] = fix['reasoning']
