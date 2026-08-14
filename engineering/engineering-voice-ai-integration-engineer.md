@@ -119,9 +119,10 @@ def validate_audio_file(file_path: str) -> dict:
 
     result = subprocess.run([
         "ffprobe", "-v", "quiet",
+        "-protocol_whitelist", "file,crypto,data",
         "-print_format", "json",
         "-show_streams", "-show_format",
-        str(path)
+        str(path.absolute())
     ], capture_output=True, text=True, check=True)
 
     probe = json.loads(result.stdout)
@@ -165,13 +166,14 @@ def preprocess_audio(input_path: str, output_path: str) -> str:
     """
     cmd = [
         "ffmpeg", "-y",
-        "-i", input_path,
+        "-protocol_whitelist", "file,crypto,data",
+        "-i", str(Path(input_path).absolute()),
         "-vn",                        # strip video
         "-acodec", "pcm_s16le",       # 16-bit PCM
         "-ar", "16000",               # 16kHz sample rate
         "-ac", "1",                   # mono
         "-af", "loudnorm=I=-16:TP=-1.5:LRA=11",  # EBU R128 loudness normalization
-        output_path
+        str(Path(output_path).absolute())
     ]
     subprocess.run(cmd, check=True, capture_output=True)
     return output_path
@@ -191,7 +193,8 @@ def chunk_audio(input_path: str, chunk_dir: str,
     import math, os
     result = subprocess.run([
         "ffprobe", "-v", "quiet", "-show_entries", "format=duration",
-        "-of", "default=noprint_wrappers=1:nokey=1", input_path
+        "-protocol_whitelist", "file,crypto,data",
+        "-of", "default=noprint_wrappers=1:nokey=1", str(Path(input_path).absolute())
     ], capture_output=True, text=True, check=True)
     total_duration = float(result.stdout.strip())
 
@@ -205,11 +208,12 @@ def chunk_audio(input_path: str, chunk_dir: str,
         out_path = f"{chunk_dir}/chunk_{chunk_index:04d}.wav"
         subprocess.run([
             "ffmpeg", "-y",
-            "-i", input_path,
+            "-protocol_whitelist", "file,crypto,data",
+            "-i", str(Path(input_path).absolute()),
             "-ss", str(start),
             "-to", str(end),
             "-acodec", "copy",
-            out_path
+            str(Path(out_path).absolute())
         ], check=True, capture_output=True)
         chunks.append({"path": out_path, "start_offset": start, "index": chunk_index})
         start += chunk_duration
