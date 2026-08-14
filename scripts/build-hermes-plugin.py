@@ -128,6 +128,18 @@ def _load_agents() -> list[dict[str, Any]]:
     global _AGENTS, _AGENTS_BY_SLUG, _AGENTS_BY_NAME
     if _AGENTS is None:
         _AGENTS = json.loads(_DATA_PATH.read_text(encoding="utf-8"))
+        for a in _AGENTS:
+            haystack_fields = [
+                a.get("name", ""),
+                a.get("description", ""),
+                a.get("division", ""),
+                a.get("vibe", ""),
+                a.get("body", "")[:8000],
+            ]
+            haystack_text = "\n".join(haystack_fields).lower()
+            a["_haystack_text"] = haystack_text
+            a["_haystack_tokens"] = _tokens(haystack_text)
+
         _AGENTS_BY_SLUG = {a["slug"]: a for a in _AGENTS}
         _AGENTS_BY_NAME = {a["name"].lower(): a for a in _AGENTS}
     return _AGENTS
@@ -170,15 +182,20 @@ def _not_found(identifier: str) -> dict[str, Any]:
 
 
 def _score(agent: dict[str, Any], query_tokens: set[str], query_text: str) -> float:
-    haystack_fields = [
-        agent.get("name", ""),
-        agent.get("description", ""),
-        agent.get("division", ""),
-        agent.get("vibe", ""),
-        agent.get("body", "")[:8000],
-    ]
-    haystack_text = "\n".join(haystack_fields).lower()
-    haystack_tokens = _tokens(haystack_text)
+    if "_haystack_text" in agent and "_haystack_tokens" in agent:
+        haystack_text = agent["_haystack_text"]
+        haystack_tokens = agent["_haystack_tokens"]
+    else:
+        haystack_fields = [
+            agent.get("name", ""),
+            agent.get("description", ""),
+            agent.get("division", ""),
+            agent.get("vibe", ""),
+            agent.get("body", "")[:8000],
+        ]
+        haystack_text = "\n".join(haystack_fields).lower()
+        haystack_tokens = _tokens(haystack_text)
+
     overlap = query_tokens & haystack_tokens
     score = float(len(overlap))
     if query_text and query_text in haystack_text:
