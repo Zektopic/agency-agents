@@ -1,15 +1,10 @@
+import importlib.util
+import json
+import shutil
 import sys
 import tempfile
 import unittest
-import tempfile
-import importlib.util
-import tempfile
-import json
-import os
 from pathlib import Path
-import tempfile
-import shutil
-import json
 from unittest.mock import patch
 
 # Load build-hermes-plugin.py
