@@ -114,8 +114,8 @@ new Intl.ListFormat(locale, { type: 'conjunction' }).format(['Ana', 'Luis', 'Mei
 // - Brackets expose concatenation (fragments render as separate bracketed chunks)
 // - Untransformed text on screen = hardcoded string, fail the check
 export function pseudoLocalize(message) {
-  const map = { a: 'à', e: 'é', i: 'î', o: 'ö', u: 'ü', c: 'ç', n: 'ñ', s: 'š', g: 'ĝ' };
-  const swapped = message.replace(/[aeioucnsg]/g, (ch) => map[ch] ?? ch);
+  const map = { a: 'à', e: 'é', i: 'î', o: 'ö', u: 'ü', c: 'ç', n: 'ñ', s: 'š', g: 'ĝ', A: 'À', E: 'É', I: 'Î', O: 'Ö', U: 'Ü', C: 'Ç', N: 'Ñ', S: 'Š', G: 'Ĝ' };
+  const swapped = message.replace(/[aeioucnsgAEIOUCNSG]/g, (ch) => map[ch] ?? ch);
   const padding = ' one two three'.slice(0, Math.ceil(message.length * 0.4));
   return `[!!! ${swapped}${padding} !!!]`;
 }
