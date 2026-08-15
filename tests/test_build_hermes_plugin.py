@@ -20,6 +20,21 @@ parse_agent = build_hermes_plugin.parse_agent
 build = build_hermes_plugin.build
 PLUGIN_NAME = build_hermes_plugin.PLUGIN_NAME
 division_dirs = build_hermes_plugin.division_dirs
+plugin_yaml = build_hermes_plugin.plugin_yaml
+
+class TestPluginYaml(unittest.TestCase):
+    def test_plugin_yaml_output(self):
+        yaml_content = plugin_yaml()
+
+        self.assertIn(f"name: {PLUGIN_NAME}", yaml_content)
+        self.assertIn("version: 1.0.0", yaml_content)
+        self.assertIn("description: Lazy search/load/delegate router for The Agency agent roster.", yaml_content)
+        self.assertIn("provides_tools:", yaml_content)
+        self.assertIn("- agency_agents_search", yaml_content)
+        self.assertIn("- agency_agents_inspect", yaml_content)
+        self.assertIn("- agency_agents_load", yaml_content)
+        self.assertIn("- agency_agents_delegate", yaml_content)
+
 
 class TestAgentLookup(unittest.TestCase):
     def setUp(self):
