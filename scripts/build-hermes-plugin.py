@@ -44,11 +44,22 @@ def parse_agent(path: Path, repo_root: Path) -> dict[str, str] | None:
     frontmatter = parts[1]
     body = parts[2].lstrip("\n")
     fields: dict[str, str] = {}
+    current_key = None
     for line in frontmatter.splitlines():
-        if ":" not in line or line.startswith((" ", "\t")):
+        # YAML folds indented plain-scalar continuation lines into one value.
+        if line.startswith((" ", "\t")):
+            if current_key and line.strip():
+                fields[current_key] += " " + line.strip()
+            continue
+        current_key = None
+        if ":" not in line:
             continue
         key, value = line.split(":", 1)
-        fields[key.strip()] = value.strip().strip('"').strip("'")
+        current_key = key.strip()
+        fields[current_key] = value.strip()
+    for key, value in fields.items():
+        if len(value) > 1 and value[0] == value[-1] and value[0] in ('"', "'"):
+            fields[key] = value[1:-1]
     name = fields.get("name", "").strip()
     if not name:
         return None
@@ -122,6 +133,12 @@ _AGENTS_BY_SLUG: dict[str, dict[str, Any]] | None = None
 _AGENTS_BY_NAME: dict[str, dict[str, Any]] | None = None
 
 _WORD_RE = re.compile(r"[a-z0-9][a-z0-9+.#_-]*", re.I)
+_MAX_LIFECYCLE_CONTEXT_CHARS = 32_000
+_DELEGATION_WAIT_SECONDS = 330
+_CANCELLATION_WAIT_SECONDS = 30
+_TRUNCATION_MARKER = (
+    "\n\n[Specialist instructions truncated to fit the Hermes lifecycle context limit.]"
+)
 
 
 def _load_agents() -> list[dict[str, Any]]:
@@ -227,6 +244,14 @@ def _specialist_prompt(agent: dict[str, Any], task: str = "") -> str:
     )
 
 
+def _lifecycle_context(agent: dict[str, Any]) -> str:
+    context = _specialist_prompt(agent)
+    if len(context) <= _MAX_LIFECYCLE_CONTEXT_CHARS:
+        return context
+    keep = _MAX_LIFECYCLE_CONTEXT_CHARS - len(_TRUNCATION_MARKER)
+    return context[:keep] + _TRUNCATION_MARKER
+
+
 def _json(payload: dict[str, Any]) -> str:
     return json.dumps(payload, ensure_ascii=False, indent=2)
 
@@ -288,8 +313,8 @@ PROMPT_SCHEMA = {
 
 DELEGATE_DESCRIPTION = (
     "Delegate a task to one selected Agency specialist through Hermes' "
-    "delegate_task tool when available. Falls back to returning the composed "
-    "specialist prompt if delegation is unavailable."
+    "public subagent lifecycle. Falls back to returning the composed specialist "
+    "prompt if delegation is unavailable."
 )
 DELEGATE_SCHEMA = {
     "name": "agency_agents_delegate",
@@ -300,11 +325,6 @@ DELEGATE_SCHEMA = {
             "agent": {"type": "string", "description": "Agent slug or exact display name."},
             "slug": {"type": "string", "description": "Alias for agent. Pass the slug from agency_agents_search results."},
             "task": {"type": "string", "description": "Concrete task for the specialist."},
-            "toolsets": {
-                "type": "array",
-                "items": {"type": "string"},
-                "description": "Optional Hermes toolsets for the delegated worker, e.g. ['terminal','file'].",
-            },
         },
         "required": ["task"],
     },
@@ -367,24 +387,85 @@ def register(ctx):
             return _json(_not_found(identifier))
         if not task:
             return _json({"success": False, "error": "task is required"})
-        composed = _specialist_prompt(agent, task)
-        delegate_args: dict[str, Any] = {
-            "goal": task,
-            "context": composed,
-        }
-        toolsets = args.get("toolsets")
-        if isinstance(toolsets, list) and toolsets:
-            delegate_args["toolsets"] = [str(item) for item in toolsets]
+        fallback_prompt = _specialist_prompt(agent, task)
+        handle = None
         try:
-            result = ctx.dispatch_tool("delegate_task", delegate_args)
-            return _json({"success": True, "agent": _summary(agent), "delegated": True, "result": result})
+            from agent.subagent_lifecycle import SubagentLaunchRequest
+
+            lifecycle = ctx.subagent_lifecycle
+            handle = lifecycle.launch(SubagentLaunchRequest(
+                goal=task,
+                context=_lifecycle_context(agent),
+            ))
+            terminal = lifecycle.wait(
+                handle, timeout_seconds=_DELEGATION_WAIT_SECONDS
+            )
+            if terminal.timed_out:
+                try:
+                    lifecycle.cancel(
+                        handle,
+                        reason="Agency delegation exceeded the plugin wait limit.",
+                    )
+                    terminal = lifecycle.wait(
+                        handle, timeout_seconds=_CANCELLATION_WAIT_SECONDS
+                    )
+                except Exception as exc:
+                    return _json({
+                        "success": True,
+                        "agent": _summary(agent),
+                        "delegated": True,
+                        "pending": True,
+                        "subagent_id": handle.subagent_id,
+                        "warning": f"subagent cancellation could not be confirmed: {exc}",
+                    })
+                if not terminal.completed:
+                    return _json({
+                        "success": True,
+                        "agent": _summary(agent),
+                        "delegated": True,
+                        "pending": True,
+                        "subagent_id": handle.subagent_id,
+                        "state": terminal.state.value,
+                        "warning": "subagent cancellation was requested but is not terminal",
+                    })
+            result = lifecycle.result(handle)
+            if not result.ready or result.terminal_state.value != "SUCCEEDED":
+                detail = (
+                    result.error_message
+                    or result.error_classification
+                    or result.terminal_state.value
+                )
+                return _json({
+                    "success": True,
+                    "agent": _summary(agent),
+                    "delegated": False,
+                    "warning": f"subagent delegation failed: {detail}",
+                    "prompt": fallback_prompt,
+                })
+            return _json({
+                "success": True,
+                "agent": _summary(agent),
+                "delegated": True,
+                "subagent_id": handle.subagent_id,
+                "result": result.summary,
+                "structured_result": result.structured_payload,
+            })
         except Exception as exc:  # pragma: no cover - depends on Hermes runtime
+            if handle is not None:
+                return _json({
+                    "success": True,
+                    "agent": _summary(agent),
+                    "delegated": True,
+                    "pending": True,
+                    "subagent_id": handle.subagent_id,
+                    "warning": f"subagent state could not be confirmed: {exc}",
+                })
             return _json({
                 "success": True,
                 "agent": _summary(agent),
                 "delegated": False,
-                "warning": f"delegate_task unavailable: {exc}",
-                "prompt": composed,
+                "warning": f"subagent delegation unavailable: {exc}",
+                "prompt": fallback_prompt,
             })
 
     ctx.register_tool(
@@ -437,7 +518,7 @@ def readme(agent_count: int) -> str:
         - `agency_agents_search` — find matching specialists by query/division.
         - `agency_agents_inspect` — inspect one specialist's metadata or full body.
         - `agency_agents_load` — compose one specialist prompt for the current task.
-        - `agency_agents_delegate` — delegate through Hermes `delegate_task` when available.
+        - `agency_agents_delegate` — delegate through Hermes' public subagent lifecycle.
 
         Each tool is registered with Hermes' complete function-tool schema, including
         its name, description, and JSON `parameters`. The available arguments are:
@@ -447,7 +528,7 @@ def readme(agent_count: int) -> str:
         | `agency_agents_search` | `query` (required), optional `division` and `limit` |
         | `agency_agents_inspect` | `agent` or `slug`, optional `include_body` |
         | `agency_agents_load` | `agent` or `slug`, optional `task` |
-        | `agency_agents_delegate` | `agent` or `slug`, `task` (required), optional `toolsets` |
+        | `agency_agents_delegate` | `agent` or `slug`, `task` (required) |
 
         A normal flow is: search by capability, take a returned `slug`, then inspect,
         load, or delegate to that specialist. You can ask Hermes to do this in natural

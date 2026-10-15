@@ -302,7 +302,7 @@ class TestInitPyHelpers(unittest.TestCase):
 
             self.assertTrue(result.get('success'))
             self.assertFalse(result.get('delegated'))
-            self.assertEqual(result.get('warning'), "delegate_task unavailable: Mock error")
+            self.assertIn("subagent delegation unavailable:", result.get('warning', ""))
         finally:
             self.namespace['_AGENTS'] = old_agents
             self.namespace['_AGENTS_BY_SLUG'] = None
